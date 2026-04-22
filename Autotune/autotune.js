@@ -1,14 +1,3 @@
-///////////////////////////////////////////////////////////////
-//                                                           //
-//  AUTOTUNE PLUGIN FOR FM-DX-WEBSERVER (V1.0)               //
-//                                                           //
-//  by Highpoint                last update: 2026-04-22      //
-//                                                           //
-//  https://github.com/Highpoint2000/Autotune                //
-//                                                           //
-//                                                           //
-///////////////////////////////////////////////////////////////
-
 (function() {
     "use strict";
 
@@ -20,7 +9,7 @@
     var CHECK_FOR_UPDATES = true;
     var ENABLE_DEBUG_LOG  = false; 
 
-    // ── Update Logic (Integrated from AF-Validator) ────────────────────────
+    // ── Update Logic ────────────────────────────────────────────────────────
     function _checkUpdate() {
         fetch(pluginUpdateUrl + "?t=" + Date.now(), { cache: "no-store" })
             .then(function (r) { return r.ok ? r.text() : null; })
@@ -40,22 +29,15 @@
                         pluginName + "] Update: " + pluginVersion + " → " + remote + "</a>";
                 }
 
-                var icon =
-                    document.querySelector(".wrapper-outer #navigation .sidenav-content .fa-puzzle-piece") ||
-                    document.querySelector(".wrapper-outer .sidenav-content") ||
-                    document.querySelector(".sidenav-content");
+                var icon = document.querySelector(".fa-puzzle-piece")?.parentElement;
                 if (icon && !icon.querySelector("." + pluginName + "-update-dot")) {
                     var dot = document.createElement("span");
                     dot.className = pluginName + "-update-dot";
-                    dot.style.cssText =
-                        "display:block;width:12px;height:12px;border-radius:50%;" +
-                        "background-color:#FE0830;margin-left:82px;margin-top:-12px;position:absolute;";
+                    dot.style.cssText = "display:block;width:12px;height:12px;border-radius:50%;background-color:#FE0830;position:absolute;right:0;top:0;";
                     icon.appendChild(dot);
                 }
             })
-            .catch(function (e) {
-                console.warn("[" + pluginName + "] Update check failed:", e);
-            });
+            .catch(function (e) { console.warn("[" + pluginName + "] Update check failed:", e); });
     }
     if (CHECK_FOR_UPDATES) _checkUpdate();
 
@@ -71,7 +53,6 @@
 
     function log(msg, data = "") {
         if (ENABLE_DEBUG_LOG) {
-            // White text logging as requested
             console.log(`%c[${pluginName}] %c${msg}`, "color: #FFFFFF; font-weight: bold;", "color: #FFFFFF;", data);
         }
     }
@@ -79,7 +60,6 @@
     // --- WebSocket Integration ---
     async function initWebSocket() {
         try {
-            // Use the shared server socket promise
             textSocket = await window.socketPromise;
             log("Connected to shared server WebSocket.");
 
@@ -98,9 +78,7 @@
                     }
                 } catch (e) {}
             });
-        } catch (err) {
-            log("Error accessing window.socketPromise:", err);
-        }
+        } catch (err) { log("Error accessing socketPromise:", err); }
     }
 
     function sendToTuner(freqMHz) {
@@ -111,33 +89,42 @@
         }
     }
 
-    function hijackButtons() {
-        const upBtn = document.getElementById('freq-up');
-        const downBtn = document.getElementById('freq-down');
-        if (upBtn) {
-            const newUp = upBtn.cloneNode(true);
-            upBtn.parentNode.replaceChild(newUp, upBtn);
-            newUp.addEventListener('click', (e) => {
-                e.stopPropagation();
-                let current = tunerData.freq;
-                let nextFreq = (Math.floor((current + 0.05) * 10) + 1) / 10;
-                log(`HIJACK UP: ${current} -> ${nextFreq.toFixed(2)}`);
-                sendToTuner(nextFreq);
-                updateUI(nextFreq);
-            });
-        }
-        if (downBtn) {
-            const newDown = downBtn.cloneNode(true);
-            downBtn.parentNode.replaceChild(newDown, downBtn);
-            newDown.addEventListener('click', (e) => {
-                e.stopPropagation();
-                let current = tunerData.freq;
-                let nextFreq = (Math.ceil((current - 0.05) * 10) - 1) / 10;
-                log(`HIJACK DOWN: ${current} -> ${nextFreq.toFixed(2)}`);
-                sendToTuner(nextFreq);
-                updateUI(nextFreq);
-            });
-        }
+    /**
+     * SMART HIJACKING: 
+     * Instead of replacing nodes, we use a global click interceptor.
+     * This way, we don't break native listeners and don't need a reload.
+     */
+    function installSmartInterceptor() {
+        window.addEventListener('click', function(e) {
+            const upBtn = e.target.closest('#freq-up');
+            const downBtn = e.target.closest('#freq-down');
+
+            if (!upBtn && !downBtn) return;
+
+            // Detect current frequency from frontend if WebSocket hasn't updated yet
+            const currentFreq = tunerData.freq || parseFloat(document.getElementById('data-station-freq')?.textContent);
+            
+            // Logic only applies to FM (>= 30MHz)
+            if (currentFreq && currentFreq >= 30) {
+                e.stopImmediatePropagation(); // Kill server logic
+                e.preventDefault();
+
+                if (upBtn) {
+                    let nextFreq = (Math.floor((currentFreq + 0.05) * 10) + 1) / 10;
+                    log(`Smart Hijack UP (FM): ${currentFreq} -> ${nextFreq.toFixed(2)}`);
+                    sendToTuner(nextFreq);
+                    updateUI(nextFreq);
+                } else if (downBtn) {
+                    let nextFreq = (Math.ceil((currentFreq - 0.05) * 10) - 1) / 10;
+                    log(`Smart Hijack DOWN (FM): ${currentFreq} -> ${nextFreq.toFixed(2)}`);
+                    sendToTuner(nextFreq);
+                    updateUI(nextFreq);
+                }
+            } else {
+                // If < 30MHz, we do NOTHING and let the server's own listeners handle it normally.
+                log("Band < 30MHz detected. Allowing native server tuning.");
+            }
+        }, true); // Use Capture phase to be first!
     }
 
     function updateUI(freqMHz) {
@@ -152,10 +139,7 @@
         log(`Initializing Scan...`);
         await sleep(SETTLE_TIME_MS);
 
-        const getScore = () => {
-            let penalty = (tunerData.cci + tunerData.aci) * INTERFERENCE_PENALTY_FACTOR;
-            return tunerData.sig - penalty;
-        };
+        const getScore = () => tunerData.sig - ((tunerData.cci + tunerData.aci) * INTERFERENCE_PENALTY_FACTOR);
 
         let centerFreqKHz = Math.round(tunerData.freq * 1000);
         let bestFreqKHz = centerFreqKHz;
@@ -163,29 +147,24 @@
         let stepKHz = isAM ? 1 : 10;
 
         let maxScore = getScore();
-        log(`Base ${tunerData.freq} MHz: Score: ${maxScore.toFixed(2)} (Sig: ${tunerData.sig}, CCI: ${tunerData.cci}, ACI: ${tunerData.aci})`);
-
         for (let dir of [stepKHz, -stepKHz]) {
             for (let i = 1; i <= SCAN_STEPS; i++) {
-                let testKHz = centerFreqKHz + (i * dir);
-                let testMHz = testKHz / 1000;
+                let testMHz = (centerFreqKHz + (i * dir)) / 1000;
                 sendToTuner(testMHz);
                 await sleep(SETTLE_TIME_MS);
                 let currentScore = getScore();
-                log(`Check ${testMHz.toFixed(3)} MHz: Score ${currentScore.toFixed(2)} (Sig: ${tunerData.sig}, CCI: ${tunerData.cci}, ACI: ${tunerData.aci})`);
                 if (currentScore > maxScore) {
                     maxScore = currentScore;
-                    bestFreqKHz = testKHz;
-                    log(`--> New best frequency found!`);
+                    bestFreqKHz = Math.round(testMHz * 1000);
                 } else break;
             }
         }
         
         const finalFreqMHz = (bestFreqKHz / 1000).toFixed(isAM ? 3 : 2);
-        log(`RESULT: Selecting ${finalFreqMHz} MHz (Score: ${maxScore.toFixed(2)})`);
+        log(`RESULT: Selecting ${finalFreqMHz} MHz`);
         sendToTuner(parseFloat(finalFreqMHz));
         updateUI(parseFloat(finalFreqMHz));
-        hijackButtons();
+        
         setTimeout(() => { isTuningInternally = false; }, 1000);
     }
 
@@ -225,28 +204,26 @@
     document.head.appendChild(style);
 
     function injectButton() {
-        const freqContainer = document.getElementById("freq-container");
-        if (!freqContainer || document.getElementById('autotune-btn')) return;
+        if (document.getElementById('autotune-btn')) return;
+        const container = document.getElementById("freq-container");
+        if (!container) return;
         const btn = document.createElement("button");
         btn.id = 'autotune-btn';
         btn.className = 'autotune-button';
         btn.innerHTML = 'Auto<br>Tune';
-        // Tooltip description
         btn.title = 'Optimize current frequency for best signal and lowest interference';
-        
         btn.onclick = async (e) => {
-            e.stopPropagation(); 
+            e.stopPropagation();
             btn.classList.add('active');
             await performAutoTune();
             btn.classList.remove('active');
         };
-        
-        freqContainer.appendChild(btn);
-        hijackButtons();
+        container.appendChild(btn);
     }
 
     function _init() {
         initWebSocket();
+        installSmartInterceptor(); // No more node cloning!
         setTimeout(injectButton, 500);
     }
 
