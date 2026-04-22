@@ -16,7 +16,7 @@
     var pluginVersion     = "1.0";
     var pluginName        = "AutoTune";
     var pluginHomepageUrl = "https://github.com/highpoint2000/Autotune/releases";
-    var pluginUpdateUrl   = "https://raw.githubusercontent.com/highpoint2000/Autotune/main/autotune.js";
+    var pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/Autotune/refs/heads/main/Autotune/autotune.js";
     var CHECK_FOR_UPDATES = true;
     var ENABLE_DEBUG_LOG  = false; 
 
