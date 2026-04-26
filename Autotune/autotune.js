@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////
 ///                                                      ///
-///  AUTOTUNE SCRIPT FOR FM-DX-WEBSERVER                 ///
+///  AUTOTUNE SCRIPT FOR FM-DX-WEBSERVER         (V1.0b) ///
 ///                                                      ///
-///  by Highpoint                last update: 22.04.25   ///
+///  by Highpoint                last update: 26.04.25   ///
 ///                                                      ///
 ///  https://github.com/Highpoint2000/Autotune           ///
 ///                                                      ///
@@ -12,7 +12,7 @@
     "use strict";
 
     // ── Plugin Metadata & Update Configuration ──────────────────────────────
-    var pluginVersion     = "1.0a";
+    var pluginVersion     = "1.0b";
     var pluginName        = "AutoTune";
     var pluginHomepageUrl = "https://github.com/highpoint2000/Autotune/releases";
     var pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/Autotune/refs/heads/main/Autotune/autotune.js";
@@ -123,6 +123,24 @@
         }, true);
     }
 
+    // --- Keyboard Shortcut Integration ---
+    function installKeyboardShortcut() {
+        window.addEventListener('keydown', function(e) {
+            // Check if user is typing in an input or textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                return;
+            }
+
+            // Trigger on 'a' or 'A'
+            if (e.key === 'a' || e.key === 'A') {
+                log("Keyboard shortcut triggered: AutoTune starting...");
+                const btn = document.getElementById('autotune-btn');
+                if (btn) btn.click();
+                else performAutoTune();
+            }
+        });
+    }
+
     function updateUI(freqMHz) {
         if (typeof window.currentFrequency !== 'undefined') {
             window.currentFrequency = parseFloat(freqMHz);
@@ -133,16 +151,12 @@
         if (isTuningInternally || tunerData.freq === null) return;
         isTuningInternally = true;
         
-        // --- FIXED ANCHOR LOGIC ---
-        // We round to the nearest .1 MHz (FM) or .001 MHz (AM) to establish the 'Home' frequency.
-        // This ensures a click on 105.060 is anchored to 105.100.
         let isAM = tunerData.freq < 30;
         let anchorFreqKHz = isAM ? Math.round(tunerData.freq * 1000) : Math.round(Math.round(tunerData.freq * 10) * 100);
         let stepKHz = isAM ? 1 : 10;
 
         log(`Initializing Scan... Anchor: ${(anchorFreqKHz/1000).toFixed(3)} MHz`);
         
-        // Move to anchor first to start from a clean baseline
         sendToTuner(anchorFreqKHz / 1000);
         await sleep(SETTLE_TIME_MS);
 
@@ -221,9 +235,9 @@
         btn.id = 'autotune-btn';
         btn.className = 'autotune-button';
         btn.innerHTML = 'Auto<br>Tune';
-        btn.title = 'Optimize current frequency for best signal and lowest interference';
+        btn.title = 'Optimize current frequency for best signal and lowest interference (Key: A)';
         btn.onclick = async (e) => {
-            e.stopPropagation();
+            if (e) e.stopPropagation();
             btn.classList.add('active');
             await performAutoTune();
             btn.classList.remove('active');
@@ -234,6 +248,7 @@
     function _init() {
         initWebSocket();
         installSmartInterceptor();
+        installKeyboardShortcut(); // Key listener added here
         setTimeout(injectButton, 500);
     }
 
