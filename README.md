@@ -7,7 +7,7 @@ This plugin for the FM DX web server automatically optimizes reception by scanni
 
 ## Version 1.0b
 
-- Shortcut "a" added to trigger the Autotune command (usable via keyboard or rotary controller with control buttons)
+- Shortcut "a" or "A" added to trigger the Autotune command (usable via keyboard or rotary controller with control buttons)
 
 ## Installation notes:
 
