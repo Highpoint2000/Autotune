@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////
 ///                                                      ///
-///  AUTOTUNE SCRIPT FOR FM-DX-WEBSERVER         (V1.0b) ///
+///  AUTOTUNE SCRIPT FOR FM-DX-WEBSERVER         (V1.0c) ///
 ///                                                      ///
-///  by Highpoint                last update: 26.04.25   ///
+///  by Highpoint                last update: 27.05.25   ///
 ///                                                      ///
 ///  https://github.com/Highpoint2000/Autotune           ///
 ///                                                      ///
@@ -12,7 +12,7 @@
     "use strict";
 
     // ── Plugin Metadata & Update Configuration ──────────────────────────────
-    var pluginVersion     = "1.0b";
+    var pluginVersion     = "1.0c";
     var pluginName        = "AutoTune";
     var pluginHomepageUrl = "https://github.com/highpoint2000/Autotune/releases";
     var pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/Autotune/refs/heads/main/Autotune/autotune.js";
@@ -106,23 +106,50 @@
             if (!upBtn && !downBtn) return;
 
             const currentFreq = tunerData.freq || parseFloat(document.getElementById('data-station-freq')?.textContent);
+            
             if (currentFreq && currentFreq >= 30) {
                 e.stopImmediatePropagation();
                 e.preventDefault();
 
+                // Check if we are in the OIRT band (approx. 65 to 74 MHz)
+                const isOIRT = (currentFreq >= 65 && currentFreq <= 74);
+                let nextFreq;
+
                 if (upBtn) {
-                    let nextFreq = (Math.floor((currentFreq + 0.05) * 10) + 1) / 10;
-                    sendToTuner(nextFreq);
-                    updateUI(nextFreq);
+                    if (isOIRT) {
+                        // Anchor the grid to 65.00 MHz to maintain the 0.03 raster
+                        const baseOIRT = 65.00;
+                        const offsetInt = Math.round((currentFreq - baseOIRT) * 100);
+                        
+                        // The +2 offset replicates the FM logic. If you are at 65.010 
+                        // (detuned from 65.030), this forces it to skip 65.030 and jump to 65.060.
+                        nextFreq = baseOIRT + (Math.floor((offsetInt + 2) / 3) * 3 + 3) / 100;
+                    } else {
+                        // Standard 0.1 MHz grid
+                        nextFreq = (Math.floor((currentFreq + 0.05) * 10) + 1) / 10;
+                    }
                 } else if (downBtn) {
-                    let nextFreq = (Math.ceil((currentFreq - 0.05) * 10) - 1) / 10;
-                    sendToTuner(nextFreq);
-                    updateUI(nextFreq);
+                    if (isOIRT) {
+                        const baseOIRT = 65.00;
+                        const offsetInt = Math.round((currentFreq - baseOIRT) * 100);
+                        
+                        // The -2 offset mimics the same skipping behavior downwards
+                        nextFreq = baseOIRT + (Math.ceil((offsetInt - 2) / 3) * 3 - 3) / 100;
+                    } else {
+                        // Standard 0.1 MHz grid
+                        nextFreq = (Math.ceil((currentFreq - 0.05) * 10) - 1) / 10;
+                    }
                 }
+                
+                // Clean up any floating-point math artifacts
+                nextFreq = Math.round(nextFreq * 100) / 100;
+
+                sendToTuner(nextFreq);
+                updateUI(nextFreq);
             }
         }, true);
     }
-
+	
     // --- Keyboard Shortcut Integration ---
     function installKeyboardShortcut() {
         window.addEventListener('keydown', function(e) {
@@ -152,10 +179,17 @@
         isTuningInternally = true;
         
         let isAM = tunerData.freq < 30;
+        let isOIRT = (tunerData.freq >= 65 && tunerData.freq <= 74);
+        
         let anchorFreqKHz = isAM ? Math.round(tunerData.freq * 1000) : Math.round(Math.round(tunerData.freq * 10) * 100);
         let stepKHz = isAM ? 1 : 10;
+        
+        // DYNAMIC SCAN RANGE: 
+        // 2 steps (+/- 0.02 MHz) for OIRT to prevent overlapping into adjacent 30kHz channels.
+        // Falls back to your original SCAN_STEPS (4) for everything else.
+        let dynamicScanSteps = isOIRT ? 2 : SCAN_STEPS;
 
-        log(`Initializing Scan... Anchor: ${(anchorFreqKHz/1000).toFixed(3)} MHz`);
+        log(`Initializing Scan... Anchor: ${(anchorFreqKHz/1000).toFixed(3)} MHz (Steps: ${dynamicScanSteps})`);
         
         sendToTuner(anchorFreqKHz / 1000);
         await sleep(SETTLE_TIME_MS);
@@ -166,7 +200,7 @@
         let maxScore = getScore();
 
         for (let dir of [stepKHz, -stepKHz]) {
-            for (let i = 1; i <= SCAN_STEPS; i++) {
+            for (let i = 1; i <= dynamicScanSteps; i++) {
                 let testKHz = anchorFreqKHz + (i * dir);
                 let testMHz = testKHz / 1000;
                 

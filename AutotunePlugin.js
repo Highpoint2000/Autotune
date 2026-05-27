@@ -1,7 +1,7 @@
 // Plugin configuration, this is used in the administration when plugins are loaded
 var pluginConfig = {
     name: 'Autotune',
-    version: '1.0a',
+    version: '1.0c',
     author: 'Highpoint',
     frontEndPath: 'Autotune/autotune.js'
 }

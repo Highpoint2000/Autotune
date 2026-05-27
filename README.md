@@ -5,9 +5,9 @@ This plugin for the FM DX web server automatically optimizes reception by scanni
 
 
 
-## Version 1.0b
+## Version 1.0c
 
-- Shortcut "a" or "A" added to trigger the Autotune command (usable via keyboard or rotary controller with control buttons)
+- The OIRT tuning logic was updated to anchor the 0.03 MHz grid to a base frequency of 65.00 MHz, ensuring it snaps correctly to the proper channels even when starting from a slightly detuned frequency.
 
 ## Installation notes:
 
@@ -38,6 +38,10 @@ If you have any questions, would like to report problems, or have suggestions fo
 
 <details>
 <summary>History</summary>
+
+### Version 1.0b
+
+- Shortcut "a" or "A" added to trigger the Autotune command (usable via keyboard or rotary controller with control buttons)
 
 ### Version 1.0a
 
